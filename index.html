@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script async src="https://docs.opencv.org/4.5.5/opencv.js" type="text/javascript"></script>
+    <script src="enhanced_mode_fix.js" defer></script>
     <style>
         @keyframes glow {
             0%, 100% { box-shadow: 0 0 20px rgba(0, 97, 239, 0.5), 0 0 40px rgba(0, 97, 239, 0.3); }
@@ -1490,7 +1491,10 @@
             inkColor: 'green',
             sensitivity: 50,
             brightness: 1.5,
-            glow: 3
+            glow: 10,
+            detectionMode: 'luminance',
+            luminanceThreshold: 120,
+            calibrating: false
         };
         let enhancedInterval = null;
         let hiddenCanvas = null;
@@ -3277,5 +3281,162 @@
         window.toggleAutoDetect = toggleAutoDetect;
         window.updateColorUI = updateColorUI;
     </script>
+<script src="enhanced_mode_fix.js" defer></script>
 </body>
-</html>
+</html><!-- Add this script tag after the OpenCV script tag -->
+<script>
+// Enhanced Mode Fixes for Dark Room Detection
+
+// Override or extend existing functions
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // Add new calibration function
+    window.startCalibration = function() {
+        enhancedSettings.calibrating = true;
+        alert('Click on the glowing ink to calibrate detection');
+        
+        const canvas = document.getElementById('enhancedCanvas');
+        canvas.style.cursor = 'crosshair';
+        canvas.addEventListener('click', handleCalibrationClick, { once: true });
+    };
+    
+    window.handleCalibrationClick = function(e) {
+        const canvas = document.getElementById('enhancedCanvas');
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) * (hiddenCanvas.width / rect.width));
+        const y = Math.floor((e.clientY - rect.top) * (hiddenCanvas.height / rect.height));
+        
+        // Sample the color at click point
+        const pixel = hiddenCtx.getImageData(x, y, 1, 1).data;
+        const luminance = 0.299 * pixel[0] + 0.587 * pixel[1] + 0.114 * pixel[2];
+        
+        // Set threshold based on sampled luminance
+        enhancedSettings.luminanceThreshold = Math.max(50, luminance - 30);
+        
+        // Detect if green or blue
+        if (pixel[1] > pixel[2]) {
+            enhancedSettings.inkColor = 'green';
+        } else {
+            enhancedSettings.inkColor = 'blue';
+        }
+        
+        canvas.style.cursor = 'default';
+        alert(`Calibrated for ${enhancedSettings.inkColor} ink with threshold ${Math.round(luminance)}`);
+        enhancedSettings.calibrating = false;
+    };
+    
+    // Override processEnhancedFrame with fixed version
+    const originalProcess = window.processEnhancedFrame;
+    window.processEnhancedFrame = function(canvas, ctx) {
+        // Fix canvas positioning to match video exactly
+        const videoRect = videoElement.getBoundingClientRect();
+        canvas.style.position = 'fixed';
+        canvas.style.left = videoRect.left + 'px';
+        canvas.style.top = videoRect.top + 'px';
+        canvas.style.width = videoRect.width + 'px';
+        canvas.style.height = videoRect.height + 'px';
+        canvas.width = videoRect.width;
+        canvas.height = videoRect.height;
+        
+        // Capture video frame
+        hiddenCanvas.width = videoElement.videoWidth;
+        hiddenCanvas.height = videoElement.videoHeight;
+        hiddenCtx.drawImage(videoElement, 0, 0);
+        
+        // Process for dark room with glowing ink
+        const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+        const data = imageData.data;
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Create output for ink only
+        const inkCanvas = document.createElement('canvas');
+        inkCanvas.width = hiddenCanvas.width;
+        inkCanvas.height = hiddenCanvas.height;
+        const inkCtx = inkCanvas.getContext('2d');
+        const inkImageData = inkCtx.createImageData(hiddenCanvas.width, hiddenCanvas.height);
+        const inkData = inkImageData.data;
+        
+        // Use luminance threshold (default 120 for dark rooms)
+        const threshold = enhancedSettings.luminanceThreshold || 120;
+        const isGreen = enhancedSettings.inkColor === 'green';
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            // Calculate luminance
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            
+            // In dark rooms, glowing ink has high luminance
+            let isInk = luminance > threshold;
+            
+            // Apply color filter
+            if (isInk) {
+                if (isGreen) {
+                    // Check if it's greenish
+                    isInk = g > r && g > b;
+                } else {
+                    // Check if it's bluish
+                    isInk = b > r && b > g * 0.9;
+                }
+            }
+            
+            if (isInk) {
+                // Keep and enhance the glowing pixels
+                const boost = enhancedSettings.brightness;
+                if (isGreen) {
+                    inkData[i] = 0;
+                    inkData[i + 1] = Math.min(255, g * boost);
+                    inkData[i + 2] = Math.min(255, b * 0.5);
+                } else {
+                    inkData[i] = 0;
+                    inkData[i + 1] = Math.min(255, g * 0.7);
+                    inkData[i + 2] = Math.min(255, b * boost);
+                }
+                inkData[i + 3] = Math.min(255, luminance + 100);
+            } else {
+                // Make dark pixels transparent
+                inkData[i + 3] = 0;
+            }
+        }
+        
+        // Put processed data
+        inkCtx.putImageData(inkImageData, 0, 0);
+        
+        // Apply glow
+        if (enhancedSettings.glow > 0) {
+            ctx.shadowBlur = enhancedSettings.glow;
+            ctx.shadowColor = isGreen ? '#00ff00' : '#0096ff';
+        }
+        
+        // Scale to match video display
+        const scaleX = canvas.width / hiddenCanvas.width;
+        const scaleY = canvas.height / hiddenCanvas.height;
+        
+        ctx.save();
+        if (isMirrored) {
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+        }
+        ctx.scale(scaleX, scaleY);
+        ctx.drawImage(inkCanvas, 0, 0);
+        ctx.restore();
+    };
+    
+    // Add calibration button if it doesn't exist
+    setTimeout(() => {
+        const settingsDiv = document.getElementById('enhancedSettings');
+        if (settingsDiv && !document.getElementById('calibrateBtn')) {
+            const calibrateBtn = document.createElement('button');
+            calibrateBtn.id = 'calibrateBtn';
+            calibrateBtn.className = 'w-full px-3 py-2 mb-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg';
+            calibrateBtn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Calibrate Detection';
+            calibrateBtn.onclick = startCalibration;
+            settingsDiv.insertBefore(calibrateBtn, settingsDiv.firstChild.nextSibling);
+        }
+    }, 1000);
+});
+</script>
