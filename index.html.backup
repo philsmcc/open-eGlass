@@ -1886,9 +1886,6 @@
             } else if (e.key === 'w' || e.key === 'W') {
                 showDock();
                 openWebviewDialog();
-            } else if (e.key === 'e' || e.key === 'E') {
-                showDock();
-                toggleEnhancedMode();
             }
         });
         
@@ -2936,54 +2933,14 @@
             settings.classList.toggle('active');
         }
         
-        function toggleAutoDetect() {
-            enhancedSettings.autoDetect = document.getElementById('autoDetectColor').checked;
-            const colorSelection = document.getElementById('colorSelection');
-            if (enhancedSettings.autoDetect) {
-                colorSelection.style.opacity = '0.5';
-                colorSelection.style.pointerEvents = 'none';
-            } else {
-                colorSelection.style.opacity = '1';
-                colorSelection.style.pointerEvents = 'auto';
-            }
-        }
-        
-        function updateColorUI(color) {
-            document.querySelectorAll('.color-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.dataset.color === color) {
-                    btn.classList.add('active');
-                }
-            });
-            
-            // Update indicator and sliders
-            const indicator = document.getElementById('enhancedIndicator');
-            const dot = indicator.querySelector('.enhanced-dot');
-            if (color === 'blue') {
-                indicator.classList.add('blue-mode');
-                dot.classList.add('blue');
-                document.getElementById('sensitivitySlider').classList.add('blue');
-                document.getElementById('brightnessSlider').classList.add('blue');
-                document.getElementById('glowSlider').classList.add('blue');
-            } else {
-                indicator.classList.remove('blue-mode');
-                dot.classList.remove('blue');
-                document.getElementById('sensitivitySlider').classList.remove('blue');
-                document.getElementById('brightnessSlider').classList.remove('blue');
-                document.getElementById('glowSlider').classList.remove('blue');
-            }
-        }
-        
         function setInkColor(color) {
             enhancedSettings.inkColor = color;
-            enhancedSettings.autoDetect = false;
-            document.getElementById('autoDetectColor').checked = false;
             
             // Update UI
             document.querySelectorAll('.color-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            event.target.closest('.color-btn').classList.add('active');
+            event.target.classList.add('active');
             
             // Update indicator color
             const indicator = document.getElementById('enhancedIndicator');
@@ -3057,118 +3014,13 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
         
-        function processWithOpenCV(canvas, ctx) {
-            // Create OpenCV Mat from canvas
-            let src = cv.imread(hiddenCanvas);
-            let hsv = new cv.Mat();
-            let mask = new cv.Mat();
-            let result = new cv.Mat();
-            
-            try {
-                // Convert to HSV for better color detection
-                cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-                cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-                
-                // Define color ranges based on ink color
-                const isGreen = enhancedSettings.inkColor === 'green';
-                const sensitivity = enhancedSettings.sensitivity;
-                
-                let lower, upper;
-                if (isGreen) {
-                    // Green fluorescent ink HSV range
-                    lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), 
-                        [Math.max(0, 40 - sensitivity/2), 50, 50, 0]);
-                    upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), 
-                        [Math.min(179, 80 + sensitivity/2), 255, 255, 255]);
-                } else {
-                    // Blue fluorescent ink HSV range
-                    lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), 
-                        [Math.max(0, 90 - sensitivity/2), 50, 50, 0]);
-                    upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), 
-                        [Math.min(179, 130 + sensitivity/2), 255, 255, 255]);
-                }
-                
-                // Create mask for the color range
-                cv.inRange(hsv, lower, upper, mask);
-                
-                // Apply morphological operations to clean up
-                let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
-                cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
-                cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
-                
-                // Slightly dilate to capture edges
-                cv.dilate(mask, mask, kernel);
-                
-                // Apply mask to original image
-                src.copyTo(result, mask);
-                
-                // Draw the result on canvas
-                const tempCanvas = document.createElement('canvas');
-                cv.imshow(tempCanvas, result);
-                
-                // Calculate scale and position
-                const scaleX = canvas.width / tempCanvas.width;
-                const scaleY = canvas.height / tempCanvas.height;
-                const scale = Math.min(scaleX, scaleY);
-                const offsetX = (canvas.width - tempCanvas.width * scale) / 2;
-                const offsetY = (canvas.height - tempCanvas.height * scale) / 2;
-                
-                // Clear canvas
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // Apply glow effect
-                if (enhancedSettings.glow > 0) {
-                    ctx.shadowBlur = enhancedSettings.glow;
-                    ctx.shadowColor = isGreen ? '#00ff00' : '#0096ff';
-                }
-                
-                // Apply brightness enhancement
-                ctx.globalAlpha = Math.min(1, enhancedSettings.brightness / 1.5);
-                
-                // Draw the processed frame
-                ctx.save();
-                ctx.translate(offsetX, offsetY);
-                ctx.scale(scale, scale);
-                
-                if (isMirrored) {
-                    ctx.translate(tempCanvas.width, 0);
-                    ctx.scale(-1, 1);
-                }
-                
-                ctx.drawImage(tempCanvas, 0, 0);
-                ctx.restore();
-                
-                // Clean up
-                lower.delete();
-                upper.delete();
-                kernel.delete();
-                
-            } finally {
-                // Always clean up OpenCV resources
-                src.delete();
-                hsv.delete();
-                mask.delete();
-                result.delete();
-            }
-        }
-        
         function processEnhancedFrame(canvas, ctx) {
             // Capture current video frame
             hiddenCanvas.width = videoElement.videoWidth;
             hiddenCanvas.height = videoElement.videoHeight;
             hiddenCtx.drawImage(videoElement, 0, 0);
             
-            // Try OpenCV processing if available
-            if (cvReady && typeof cv !== 'undefined') {
-                try {
-                    processWithOpenCV(canvas, ctx);
-                    return;
-                } catch (e) {
-                    console.warn('OpenCV processing failed, using fallback:', e);
-                }
-            }
-            
-            // Fallback to pure JavaScript processing
+            // Get image data
             const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
             const data = imageData.data;
             
@@ -3274,8 +3126,6 @@
         window.updateSensitivity = updateSensitivity;
         window.updateBrightness = updateBrightness;
         window.updateGlow = updateGlow;
-        window.toggleAutoDetect = toggleAutoDetect;
-        window.updateColorUI = updateColorUI;
     </script>
 </body>
 </html>
