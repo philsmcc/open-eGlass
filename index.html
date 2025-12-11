@@ -1,0 +1,2537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eGlass Fusion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script async src="https://docs.opencv.org/4.5.5/opencv.js" type="text/javascript"></script>
+    <style>
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(0, 97, 239, 0.5), 0 0 40px rgba(0, 97, 239, 0.3); }
+            50% { box-shadow: 0 0 30px rgba(0, 97, 239, 0.8), 0 0 60px rgba(0, 97, 239, 0.4); }
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .glow-effect {
+            animation: glow 3s ease-in-out infinite;
+        }
+        
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        .float-animation {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        /* Enhanced Dock Toolbar */
+        .dock-container {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 20px;
+            padding-bottom: 10px;
+            z-index: 50;
+            transition: transform 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+        
+        .dock-container.hiding {
+            transform: translateX(-50%) translateY(calc(100% - 8px));
+            transition: transform 5s cubic-bezier(0.4, 0.0, 0.6, 1);
+        }
+        
+        .dock-container.minimized {
+            transform: translateX(-50%) translateY(calc(100% - 8px));
+        }
+        
+        .dock-container.minimized:hover {
+            transform: translateX(-50%) translateY(0);
+            transition: transform 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+        
+        /* Bottom hover zone */
+        .dock-hover-zone {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            z-index: 49;
+        }
+        
+        .dock {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            border-radius: 24px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5),
+                        0 0 80px rgba(0, 97, 239, 0.2),
+                        inset 0 0 20px rgba(0, 97, 239, 0.1);
+            transition: opacity 0.3s ease;
+        }
+        
+        .dock-container.hiding .dock,
+        .dock-container.minimized .dock {
+            opacity: 0.3;
+            transition: opacity 3s ease;
+        }
+        
+        /* Dock Items with Magnification */
+        .dock-item {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: linear-gradient(145deg, rgba(55, 65, 81, 0.6), rgba(31, 41, 55, 0.6));
+            border: 1px solid rgba(0, 97, 239, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            overflow: hidden;
+        }
+        
+        .dock-item::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(145deg, transparent, rgba(0, 97, 239, 0.1));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .dock-item:hover::before {
+            opacity: 1;
+        }
+        
+        .dock-item i {
+            font-size: 20px;
+            color: rgba(209, 213, 219, 0.9);
+            transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            z-index: 2;
+        }
+        
+        /* Magnification effect */
+        .dock-item:hover {
+            transform: scale(1.4) translateY(-12px);
+            background: linear-gradient(145deg, rgba(0, 97, 239, 0.3), rgba(0, 61, 175, 0.3));
+            border-color: rgba(0, 97, 239, 0.6);
+            box-shadow: 0 10px 30px rgba(0, 97, 239, 0.4),
+                        0 0 40px rgba(0, 97, 239, 0.3);
+        }
+        
+        .dock-item:hover i {
+            color: white;
+            transform: scale(1.1);
+        }
+        
+        /* Adjacent items magnification */
+        .dock-item:hover + .dock-item,
+        .dock-item:has(+ .dock-item:hover) {
+            transform: scale(1.2) translateY(-6px);
+        }
+        
+        /* Active state */
+        .dock-item.active {
+            background: linear-gradient(145deg, rgba(0, 97, 239, 0.4), rgba(0, 61, 175, 0.4));
+            border-color: rgba(0, 97, 239, 0.8);
+            box-shadow: 0 0 30px rgba(0, 97, 239, 0.5);
+        }
+        
+        .dock-item.active i {
+            color: white;
+        }
+        
+        /* Separator */
+        .dock-separator {
+            width: 1px;
+            height: 32px;
+            background: linear-gradient(180deg, 
+                transparent, 
+                rgba(0, 97, 239, 0.3) 50%, 
+                transparent);
+            margin: 0 6px;
+        }
+        
+        /* Status indicator */
+        .dock-status {
+            padding: 6px 12px;
+            background: rgba(17, 24, 39, 0.8);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 6px;
+            border: 1px solid rgba(0, 97, 239, 0.2);
+            font-size: 13px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        /* Visual indicator strip when minimized */
+        .dock-indicator {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(0, 97, 239, 0.4) 20%, 
+                rgba(0, 97, 239, 0.4) 80%, 
+                transparent);
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 2s ease;
+        }
+        
+        .dock-container.hiding .dock-indicator,
+        .dock-container.minimized .dock-indicator {
+            opacity: 1;
+        }
+        
+        /* Tooltip */
+        .dock-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 6px 12px;
+            background: rgba(17, 24, 39, 0.95);
+            color: white;
+            font-size: 12px;
+            border-radius: 8px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            backdrop-filter: blur(10px);
+        }
+        
+        .dock-item:hover .dock-tooltip {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-5px);
+        }
+        
+        /* Settings panel */
+        .settings-panel {
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-left: 1px solid rgba(0, 97, 239, 0.3);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Video styles */
+        #videoElement {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+        
+        .mirror-video {
+            transform: scaleX(-1);
+        }
+        
+        /* Fade gradient */
+        .fade-gradient {
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                transparent 70%, 
+                rgba(0,0,0,0.3) 100%);
+        }
+        
+        /* Fullscreen styles */
+        .fullscreen-hint {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+        
+        .fullscreen-hint.show {
+            opacity: 1;
+        }
+        
+        /* Loading animation */
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        /* Image overlay styles */
+        .image-overlay {
+            position: absolute;
+            border: none;
+            border-radius: 8px;
+            cursor: move;
+            transition: transform 0.1s ease, box-shadow 0.2s ease;
+            z-index: 30;
+        }
+        
+        .image-overlay:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .image-overlay.dragging {
+            opacity: 0.8;
+            cursor: grabbing;
+        }
+        
+        .image-overlay img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 6px;
+            pointer-events: none;
+        }
+        
+        /* Menu button */
+        .image-menu-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 97, 239, 0.4);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s ease;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        
+        .image-overlay:hover .image-menu-btn,
+        .webview-overlay:hover .image-menu-btn {
+            opacity: 1;
+        }
+        
+        .image-menu-btn:hover {
+            background: rgba(0, 97, 239, 0.4);
+            border-color: rgba(0, 97, 239, 0.8);
+        }
+        
+        /* Image menu panel */
+        .image-menu {
+            position: absolute;
+            top: 45px;
+            right: 8px;
+            width: 200px;
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            border-radius: 12px;
+            padding: 8px;
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            pointer-events: auto;
+        }
+        
+        .image-menu.active {
+            display: flex;
+        }
+        
+        .image-menu-item {
+            padding: 10px 12px;
+            background: rgba(55, 65, 81, 0.3);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+        
+        .image-menu-item:hover {
+            background: rgba(0, 97, 239, 0.2);
+        }
+        
+        .image-menu-item i {
+            width: 16px;
+            text-align: center;
+            color: rgba(0, 97, 239, 0.8);
+        }
+        
+        .image-menu-item.danger {
+            color: #ef4444;
+        }
+        
+        .image-menu-item.danger i {
+            color: #ef4444;
+        }
+        
+        .image-menu-item.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+        
+        /* Transparency slider */
+        .transparency-control {
+            padding: 10px;
+            background: rgba(55, 65, 81, 0.3);
+            border-radius: 8px;
+            pointer-events: auto;
+            position: relative;
+            z-index: 1001;
+        }
+        
+        .transparency-label {
+            color: white;
+            font-size: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .transparency-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, rgba(156, 163, 175, 0.3), rgba(0, 97, 239, 0.5));
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            outline: none;
+            cursor: pointer;
+            position: relative;
+            z-index: 1002;
+        }
+        
+        .transparency-slider::-webkit-slider-thumb {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(0, 97, 239, 1);
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1003;
+        }
+        
+        .transparency-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(0, 97, 239, 1);
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1003;
+        }
+        
+        .transparency-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: rgba(0, 97, 239, 1);
+        }
+        
+        .transparency-slider::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            background: rgba(0, 97, 239, 1);
+        }
+        
+        /* Processing overlay */
+        .image-processing {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            z-index: 3;
+        }
+        
+        .image-processing.active {
+            display: flex;
+        }
+        
+        .processing-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 97, 239, 0.2);
+            border-top-color: rgba(0, 97, 239, 0.8);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: rgba(0, 97, 239, 0.8);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: se-resize;
+            bottom: -6px;
+            right: -6px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+        }
+        
+        .image-overlay:hover .resize-handle,
+        .webview-overlay:hover .resize-handle {
+            opacity: 1;
+        }
+        
+        /* Drag and drop overlay */
+        .drop-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        
+        .drop-overlay.active {
+            display: flex;
+        }
+        
+        .drop-zone {
+            width: 400px;
+            height: 300px;
+            border: 3px dashed rgba(0, 97, 239, 0.8);
+            border-radius: 20px;
+            background: rgba(17, 24, 39, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .drop-zone.drag-over {
+            border-color: rgba(0, 97, 239, 1);
+            background: rgba(0, 97, 239, 0.1);
+            transform: scale(1.05);
+        }
+        
+        .drop-icon {
+            font-size: 64px;
+            color: rgba(0, 97, 239, 0.8);
+        }
+        
+        .drop-text {
+            color: white;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .drop-subtext {
+            color: rgba(156, 163, 175, 0.9);
+            font-size: 14px;
+        }
+        
+        /* Webview styles */
+        .webview-overlay {
+            position: absolute;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            cursor: move;
+            transition: transform 0.1s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+            z-index: 30;
+            overflow: visible;
+        }
+        
+        /* Drag handle bar for webviews */
+        .webview-drag-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 40px;
+            height: 40px;
+            cursor: move;
+            z-index: 90;
+            background: transparent;
+        }
+        
+        .webview-overlay:hover {
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
+        }
+        
+        .webview-overlay.dragging {
+            opacity: 0.9;
+            cursor: grabbing;
+        }
+        
+        .webview-overlay.resizing {
+            cursor: se-resize;
+        }
+        
+        .image-overlay.resizing {
+            cursor: se-resize;
+        }
+        
+        .webview-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+            background: white;
+            pointer-events: auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .webview-frame.no-background {
+            background: transparent;
+            mix-blend-mode: normal;
+        }
+        
+        /* Webview menu */
+        .webview-menu {
+            position: absolute;
+            top: 45px;
+            right: 8px;
+            width: 280px;
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            border-radius: 12px;
+            padding: 8px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            pointer-events: auto;
+        }
+        
+        .webview-menu.active {
+            display: flex;
+        }
+        
+        .webview-nav-controls {
+            display: flex;
+            gap: 4px;
+            padding: 8px;
+            background: rgba(55, 65, 81, 0.3);
+            border-radius: 8px;
+        }
+        
+        .webview-nav-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(55, 65, 81, 0.6);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+        
+        .webview-nav-btn:hover:not(:disabled) {
+            background: rgba(0, 97, 239, 0.3);
+        }
+        
+        .webview-nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .webview-url-container {
+            padding: 8px;
+            background: rgba(55, 65, 81, 0.3);
+            border-radius: 8px;
+        }
+        
+        .webview-url-label {
+            color: rgba(156, 163, 175, 0.9);
+            font-size: 11px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .webview-url-input {
+            width: 100%;
+            height: 32px;
+            padding: 0 10px;
+            background: rgba(55, 65, 81, 0.6);
+            border: 1px solid rgba(0, 97, 239, 0.2);
+            border-radius: 6px;
+            color: white;
+            font-size: 13px;
+            outline: none;
+        }
+        
+        .webview-url-input:focus {
+            border-color: rgba(0, 97, 239, 0.5);
+            background: rgba(55, 65, 81, 0.8);
+        }
+        
+        /* URL dialog */
+        .url-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 500px;
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            border-radius: 16px;
+            padding: 24px;
+            display: none;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        
+        .url-dialog.active {
+            display: flex;
+        }
+        
+        .url-dialog-title {
+            color: white;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .url-dialog-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(55, 65, 81, 0.6);
+            border: 1px solid rgba(0, 97, 239, 0.3);
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .url-dialog-input:focus {
+            border-color: rgba(0, 97, 239, 0.6);
+            background: rgba(55, 65, 81, 0.8);
+        }
+        
+        .url-dialog-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .url-dialog-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .url-dialog-btn.primary {
+            background: rgba(0, 97, 239, 0.8);
+            color: white;
+        }
+        
+        .url-dialog-btn.primary:hover {
+            background: rgba(0, 97, 239, 1);
+        }
+        
+        .url-dialog-btn.secondary {
+            background: rgba(55, 65, 81, 0.6);
+            color: white;
+        }
+        
+        .url-dialog-btn.secondary:hover {
+            background: rgba(55, 65, 81, 0.8);
+        }
+        
+        .url-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .url-suggestion {
+            padding: 6px 12px;
+            background: rgba(55, 65, 81, 0.4);
+            border: 1px solid rgba(0, 97, 239, 0.2);
+            border-radius: 6px;
+            color: rgba(156, 163, 175, 0.9);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .url-suggestion:hover {
+            background: rgba(0, 97, 239, 0.2);
+            border-color: rgba(0, 97, 239, 0.4);
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-black overflow-hidden">
+    <!-- Video Container -->
+    <div class="relative w-full h-screen">
+        <video id="videoElement" class="w-full h-full object-cover bg-gray-900" autoplay playsinline></video>
+        
+        <!-- Fullscreen Hint -->
+        <div id="fullscreenHint" class="fullscreen-hint">
+            Press ESC to exit fullscreen
+        </div>
+        
+        <!-- No Camera Message -->
+        <div id="noCameraMessage" class="absolute inset-0 flex items-center justify-center bg-gray-900 hidden">
+            <div class="text-center px-8">
+                <div class="mb-6">
+                    <i class="fas fa-video-slash text-6xl text-blue-500 pulse-glow"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-white mb-4">No Camera Detected</h2>
+                <p class="text-gray-400 mb-6">Please connect your eGlass USB camera to begin</p>
+                <button onclick="retryCamera()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 relative overflow-hidden group" style="background-color: #0061ef;">
+                    <span class="relative z-10">
+                        <i class="fas fa-refresh mr-2"></i>
+                        Retry Connection
+                    </span>
+                    <div class="absolute inset-0 bg-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" style="background-color: #0050d0;"></div>
+                </button>
+                <div id="availableCameras" class="mt-8 text-left max-w-md mx-auto hidden">
+                    <p class="text-gray-500 text-sm mb-3">Available cameras:</p>
+                    <div id="cameraList" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bottom gradient fade -->
+        <div class="absolute bottom-0 left-0 right-0 h-40 fade-gradient pointer-events-none"></div>
+        
+        <!-- Dock Hover Zone -->
+        <div class="dock-hover-zone" id="dockHoverZone"></div>
+        
+        <!-- Enhanced Dock Toolbar -->
+        <div id="dockContainer" class="dock-container">
+            <!-- Visual Indicator Strip -->
+            <div class="dock-indicator"></div>
+            
+            <!-- Main Dock -->
+            <div class="dock">
+                <!-- Mirror Button -->
+                <div class="dock-item" id="mirrorBtn" onclick="toggleMirror()">
+                    <i class="fas fa-arrows-alt-h"></i>
+                    <span class="dock-tooltip">Mirror</span>
+                </div>
+                
+                <!-- Fullscreen Button -->
+                <div class="dock-item" onclick="toggleFullscreen()">
+                    <i class="fas fa-expand" id="fullscreenIcon"></i>
+                    <span class="dock-tooltip">Fullscreen</span>
+                </div>
+                
+                <!-- Image Button -->
+                <div class="dock-item" onclick="openImagePicker()">
+                    <i class="fas fa-image"></i>
+                    <span class="dock-tooltip">Add Image</span>
+                    <input type="file" id="imagePicker" accept="image/*" style="display: none;" onchange="handleImageSelect(event)">
+                </div>
+                
+                <!-- Webview Button -->
+                <div class="dock-item" onclick="openWebviewDialog()">
+                    <i class="fas fa-globe"></i>
+                    <span class="dock-tooltip">Add Webpage</span>
+                </div>
+                
+                <!-- Separator -->
+                <div class="dock-separator"></div>
+                
+                <!-- Screenshot Button (future feature) -->
+                <div class="dock-item" onclick="showComingSoon('Screenshot')">
+                    <i class="fas fa-camera"></i>
+                    <span class="dock-tooltip">Screenshot</span>
+                </div>
+                
+                <!-- Record Button (future feature) -->
+                <div class="dock-item" onclick="showComingSoon('Recording')">
+                    <i class="fas fa-circle text-red-500" id="recordIcon"></i>
+                    <span class="dock-tooltip">Record</span>
+                </div>
+                
+                <!-- Status Indicator -->
+                <div class="dock-status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText" class="text-gray-300 text-sm">Connected</span>
+                </div>
+                
+                <!-- Separator -->
+                <div class="dock-separator"></div>
+                
+                <!-- Settings Button -->
+                <div class="dock-item" onclick="toggleSettings()">
+                    <i class="fas fa-cog"></i>
+                    <span class="dock-tooltip">Settings</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Settings Panel -->
+        <div id="settingsPanel" class="fixed inset-y-0 right-0 w-96 settings-panel transform translate-x-full transition-transform duration-500 z-40 overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i class="fas fa-cog text-blue-500"></i>
+                        Settings
+                    </h2>
+                    <button onclick="toggleSettings()" class="p-2 rounded-lg hover:bg-gray-800 transition-colors duration-300 group">
+                        <i class="fas fa-times text-gray-400 group-hover:text-white transition-colors"></i>
+                    </button>
+                </div>
+                
+                <!-- Camera Selection -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-300 mb-3">
+                        <i class="fas fa-video mr-2 text-blue-400"></i>
+                        Camera Device
+                    </label>
+                    <select id="cameraSelect" onchange="changeCamera()" 
+                            class="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-300">
+                        <option value="">Loading cameras...</option>
+                    </select>
+                </div>
+                
+                <!-- Video Quality -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-300 mb-3">
+                        <i class="fas fa-sliders-h mr-2 text-blue-400"></i>
+                        Video Quality
+                    </label>
+                    <div class="space-y-2">
+                        <label class="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-all duration-300 cursor-pointer group">
+                            <span class="text-white flex items-center gap-2">
+                                <i class="fas fa-crown text-yellow-500"></i>
+                                1080p (Full HD)
+                            </span>
+                            <input type="radio" name="quality" value="1080" class="text-blue-500 focus:ring-blue-500" checked>
+                        </label>
+                        <label class="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-all duration-300 cursor-pointer group">
+                            <span class="text-white">720p (HD)</span>
+                            <input type="radio" name="quality" value="720" class="text-blue-500 focus:ring-blue-500">
+                        </label>
+                        <label class="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-all duration-300 cursor-pointer group">
+                            <span class="text-white">480p (SD)</span>
+                            <input type="radio" name="quality" value="480" class="text-blue-500 focus:ring-blue-500">
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Device Info -->
+                <div class="mb-6">
+                    <h3 class="text-sm font-medium text-gray-300 mb-3">
+                        <i class="fas fa-info-circle mr-2 text-blue-400"></i>
+                        Device Information
+                    </h3>
+                    <div class="bg-gray-800 rounded-lg p-4 space-y-3 border border-gray-700">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400 text-sm">Status</span>
+                            <span id="deviceStatus" class="text-green-400 text-sm flex items-center gap-2">
+                                <i class="fas fa-circle text-xs"></i>
+                                Active
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400 text-sm">Current Camera</span>
+                            <span id="currentCameraName" class="text-white text-sm">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400 text-sm">Resolution</span>
+                            <span id="currentResolution" class="text-white text-sm">-</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400 text-sm">Frame Rate</span>
+                            <span id="frameRate" class="text-white text-sm">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Keyboard Shortcuts -->
+                <div class="mb-6">
+                    <h3 class="text-sm font-medium text-gray-300 mb-3">
+                        <i class="fas fa-keyboard mr-2 text-blue-400"></i>
+                        Keyboard Shortcuts
+                    </h3>
+                    <div class="bg-gray-800 rounded-lg p-4 space-y-2 border border-gray-700">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">Toggle Mirror</span>
+                            <kbd class="px-2 py-1 bg-gray-700 rounded text-white">M</kbd>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">Settings</span>
+                            <kbd class="px-2 py-1 bg-gray-700 rounded text-white">S</kbd>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">Fullscreen</span>
+                            <kbd class="px-2 py-1 bg-gray-700 rounded text-white">F</kbd>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">Show/Hide Dock</span>
+                            <kbd class="px-2 py-1 bg-gray-700 rounded text-white">H</kbd>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">Add Image</span>
+                            <kbd class="px-2 py-1 bg-gray-700 rounded text-white">I</kbd>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-400">Add Webpage</span>
+                            <kbd class="px-2 py-1 bg-gray-700 rounded text-white">W</kbd>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- About -->
+                <div class="mt-auto pt-6 border-t border-gray-700">
+                    <div class="text-center">
+                        <div class="mb-3">
+                            <i class="fas fa-lightbulb text-4xl text-blue-500 float-animation"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">eGlass Fusion</h3>
+                        <p class="text-gray-400 text-sm">Lightboard Camera Interface</p>
+                        <p class="text-gray-500 text-xs mt-2">Version 1.0.0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Coming Soon Toast -->
+        <div id="comingSoonToast" class="fixed top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 bg-gray-800 text-white rounded-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50 border border-blue-500/30">
+            <i class="fas fa-clock mr-2 text-blue-400"></i>
+            <span id="comingSoonText"></span>
+        </div>
+        
+        <!-- Image Container -->
+        <div id="imageContainer" class="absolute inset-0 pointer-events-none" style="z-index: 25;">
+            <!-- Images will be added here dynamically -->
+        </div>
+        
+        <!-- Drag and Drop Overlay -->
+        <div id="dropOverlay" class="drop-overlay">
+            <div id="dropZone" class="drop-zone">
+                <i class="fas fa-cloud-upload-alt drop-icon"></i>
+                <div class="drop-text">Drop image here</div>
+                <div class="drop-subtext">PNG, JPG, GIF up to 10MB</div>
+            </div>
+        </div>
+        
+        <!-- Webview Container -->
+        <div id="webviewContainer" class="absolute inset-0" style="z-index: 25; pointer-events: none;">
+            <!-- Webviews will be added here dynamically -->
+        </div>
+        
+        <!-- URL Dialog -->
+        <div id="urlDialog" class="url-dialog">
+            <div class="url-dialog-title">
+                <i class="fas fa-globe text-blue-400"></i>
+                <span>Add Webpage</span>
+            </div>
+            <input type="text" id="urlInput" class="url-dialog-input" placeholder="Enter URL (e.g., https://example.com)" value="https://">
+            <div class="url-suggestions">
+                <div class="url-suggestion" onclick="setUrlInput('https://www.google.com/search?igu=1')">Google</div>
+                <div class="url-suggestion" onclick="setUrlInput('https://www.wikipedia.org')">Wikipedia</div>
+                <div class="url-suggestion" onclick="setUrlInput('https://www.youtube.com/embed/')">YouTube</div>
+                <div class="url-suggestion" onclick="setUrlInput('https://codepen.io')">CodePen</div>
+                <div class="url-suggestion" onclick="setUrlInput('https://docs.google.com')">Google Docs</div>
+            </div>
+            <div class="url-dialog-buttons">
+                <button class="url-dialog-btn secondary" onclick="closeUrlDialog()">Cancel</button>
+                <button class="url-dialog-btn primary" onclick="addWebview()">Add Webpage</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let stream = null;
+        let videoElement = document.getElementById('videoElement');
+        let currentDeviceId = null;
+        let devices = [];
+        let isMirrored = false;
+        let settingsOpen = false;
+        let isFullscreen = false;
+        let dockTimeout = null;
+        let mouseInDock = false;
+        let imageIdCounter = 0;
+        let activeImages = [];
+        let webviewIdCounter = 0;
+        let activeWebviews = [];
+        let cvReady = false;
+        
+        // Wait for OpenCV to be ready
+        function onOpenCvReady() {
+            cvReady = true;
+            console.log('OpenCV.js is ready');
+        }
+        
+        // Check for OpenCV periodically
+        let cvCheckInterval = setInterval(() => {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                cvReady = true;
+                console.log('OpenCV.js loaded successfully');
+                clearInterval(cvCheckInterval);
+            }
+        }, 500);
+        
+        // Quality settings
+        const qualitySettings = {
+            '1080': { width: 1920, height: 1080 },
+            '720': { width: 1280, height: 720 },
+            '480': { width: 854, height: 480 }
+        };
+        
+        // Initialize camera on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initializeCamera();
+            await populateCameraList();
+            setupQualityListeners();
+            monitorFrameRate();
+            setupDockBehavior();
+            
+            // Close menus when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.image-menu') && 
+                    !e.target.closest('.webview-menu') && 
+                    !e.target.closest('.image-menu-btn')) {
+                    closeAllMenus();
+                }
+            });
+            
+            // Handle Enter key in URL dialog
+            document.getElementById('urlInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    addWebview();
+                }
+            });
+        });
+        
+        async function initializeCamera() {
+            try {
+                // Request camera permissions first
+                await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                
+                // Get all video devices
+                const allDevices = await navigator.mediaDevices.enumerateDevices();
+                devices = allDevices.filter(device => device.kind === 'videoinput');
+                
+                // Find eGlass camera or use the first available
+                let selectedDevice = devices.find(device => 
+                    device.label.toLowerCase().includes('eglass')
+                ) || devices[0];
+                
+                if (selectedDevice) {
+                    await startCamera(selectedDevice.deviceId);
+                } else {
+                    showNoCameraMessage();
+                }
+            } catch (error) {
+                console.error('Error initializing camera:', error);
+                showNoCameraMessage();
+            }
+        }
+        
+        async function startCamera(deviceId) {
+            try {
+                // Stop any existing stream
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Get selected quality
+                const quality = document.querySelector('input[name="quality"]:checked')?.value || '1080';
+                const constraints = {
+                    video: {
+                        deviceId: deviceId ? { exact: deviceId } : undefined,
+                        width: { ideal: qualitySettings[quality].width },
+                        height: { ideal: qualitySettings[quality].height },
+                        frameRate: { ideal: 30 }
+                    },
+                    audio: false
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = stream;
+                currentDeviceId = deviceId;
+                
+                // Update UI
+                document.getElementById('noCameraMessage').classList.add('hidden');
+                updateStatus('Connected', 'green');
+                
+                // Update device info
+                const currentDevice = devices.find(d => d.deviceId === deviceId);
+                if (currentDevice) {
+                    document.getElementById('currentCameraName').textContent = 
+                        currentDevice.label || 'Camera ' + (devices.indexOf(currentDevice) + 1);
+                }
+                
+                // Update resolution info
+                const videoTrack = stream.getVideoTracks()[0];
+                const settings = videoTrack.getSettings();
+                document.getElementById('currentResolution').textContent = 
+                    `${settings.width}x${settings.height}`;
+                
+            } catch (error) {
+                console.error('Error starting camera:', error);
+                showNoCameraMessage();
+                updateStatus('Disconnected', 'red');
+            }
+        }
+        
+        function showNoCameraMessage() {
+            document.getElementById('noCameraMessage').classList.remove('hidden');
+            document.getElementById('deviceStatus').innerHTML = '<i class="fas fa-circle text-xs"></i> Disconnected';
+            document.getElementById('deviceStatus').className = 'text-red-400 text-sm flex items-center gap-2';
+            
+            // Show available cameras if any
+            if (devices.length > 0) {
+                document.getElementById('availableCameras').classList.remove('hidden');
+                const cameraList = document.getElementById('cameraList');
+                cameraList.innerHTML = '';
+                devices.forEach((device, index) => {
+                    const button = document.createElement('button');
+                    button.className = 'w-full text-left px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white transition-colors duration-300';
+                    button.textContent = device.label || `Camera ${index + 1}`;
+                    button.onclick = () => startCamera(device.deviceId);
+                    cameraList.appendChild(button);
+                });
+            }
+        }
+        
+        async function populateCameraList() {
+            const select = document.getElementById('cameraSelect');
+            select.innerHTML = '';
+            
+            if (devices.length === 0) {
+                select.innerHTML = '<option value="">No cameras found</option>';
+                return;
+            }
+            
+            devices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `Camera ${index + 1}`;
+                if (device.deviceId === currentDeviceId) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        }
+        
+        function changeCamera() {
+            const select = document.getElementById('cameraSelect');
+            if (select.value) {
+                startCamera(select.value);
+            }
+        }
+        
+        function toggleMirror() {
+            isMirrored = !isMirrored;
+            videoElement.classList.toggle('mirror-video');
+            
+            // Update button state
+            const mirrorBtn = document.getElementById('mirrorBtn');
+            mirrorBtn.classList.toggle('active');
+        }
+        
+        function setupDockBehavior() {
+            const dockContainer = document.getElementById('dockContainer');
+            const dockHoverZone = document.getElementById('dockHoverZone');
+            
+            // Start the auto-hide timer
+            startDockTimer();
+            
+            // Show dock when mouse enters dock area
+            dockContainer.addEventListener('mouseenter', () => {
+                mouseInDock = true;
+                clearTimeout(dockTimeout);
+                dockContainer.classList.remove('minimized', 'hiding');
+            });
+            
+            // Start hide timer when mouse leaves dock
+            dockContainer.addEventListener('mouseleave', () => {
+                mouseInDock = false;
+                startDockTimer();
+            });
+            
+            // Show dock when hovering at bottom of screen
+            dockHoverZone.addEventListener('mouseenter', () => {
+                showDock();
+            });
+            
+            // Detect mouse movement near bottom with larger trigger area
+            document.addEventListener('mousemove', (e) => {
+                const threshold = window.innerHeight - 50; // Increased from 30 to 50 pixels
+                if (e.clientY > threshold) {
+                    if (dockContainer.classList.contains('minimized') || dockContainer.classList.contains('hiding')) {
+                        showDock();
+                    }
+                }
+            });
+        }
+        
+        function startDockTimer() {
+            clearTimeout(dockTimeout);
+            dockTimeout = setTimeout(() => {
+                const dockContainer = document.getElementById('dockContainer');
+                if (!mouseInDock && !settingsOpen) {
+                    // First add the hiding class for slow animation
+                    dockContainer.classList.add('hiding');
+                    // Then add minimized after animation completes
+                    setTimeout(() => {
+                        dockContainer.classList.add('minimized');
+                    }, 5000);
+                }
+            }, 2000); // Start hiding after 2 seconds of no interaction
+        }
+        
+        function showDock() {
+            const dockContainer = document.getElementById('dockContainer');
+            clearTimeout(dockTimeout);
+            // Remove both classes instantly for quick show
+            dockContainer.classList.remove('minimized', 'hiding');
+            startDockTimer();
+        }
+        
+        function hideDock() {
+            const dockContainer = document.getElementById('dockContainer');
+            dockContainer.classList.add('hiding', 'minimized');
+        }
+        
+        function toggleSettings() {
+            settingsOpen = !settingsOpen;
+            const panel = document.getElementById('settingsPanel');
+            
+            if (settingsOpen) {
+                panel.classList.remove('translate-x-full');
+                panel.classList.add('translate-x-0');
+                clearTimeout(dockTimeout); // Keep dock visible when settings open
+            } else {
+                panel.classList.add('translate-x-full');
+                panel.classList.remove('translate-x-0');
+                startDockTimer(); // Start hide timer when settings close
+            }
+        }
+        
+        function toggleFullscreen() {
+            if (!isFullscreen) {
+                // Enter fullscreen
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) {
+                    elem.msRequestFullscreen();
+                }
+                isFullscreen = true;
+                document.getElementById('fullscreenIcon').className = 'fas fa-compress';
+                showFullscreenHint();
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                isFullscreen = false;
+                document.getElementById('fullscreenIcon').className = 'fas fa-expand';
+            }
+        }
+        
+        function showFullscreenHint() {
+            const hint = document.getElementById('fullscreenHint');
+            hint.classList.add('show');
+            setTimeout(() => {
+                hint.classList.remove('show');
+            }, 3000);
+        }
+        
+        function showComingSoon(feature) {
+            const toast = document.getElementById('comingSoonToast');
+            const text = document.getElementById('comingSoonText');
+            text.textContent = `${feature} feature coming soon!`;
+            toast.style.opacity = '1';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 2000);
+        }
+        
+        function setupQualityListeners() {
+            document.querySelectorAll('input[name="quality"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    if (currentDeviceId) {
+                        startCamera(currentDeviceId);
+                    }
+                });
+            });
+        }
+        
+        function monitorFrameRate() {
+            let lastTime = performance.now();
+            let frames = 0;
+            
+            function updateFrameRate() {
+                frames++;
+                const currentTime = performance.now();
+                
+                if (currentTime >= lastTime + 1000) {
+                    const fps = Math.round(frames * 1000 / (currentTime - lastTime));
+                    document.getElementById('frameRate').textContent = `${fps} fps`;
+                    frames = 0;
+                    lastTime = currentTime;
+                }
+                
+                requestAnimationFrame(updateFrameRate);
+            }
+            
+            updateFrameRate();
+        }
+        
+        async function retryCamera() {
+            await initializeCamera();
+            await populateCameraList();
+        }
+        
+        function updateStatus(text, color) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            statusText.textContent = text;
+            statusDot.style.background = color === 'green' ? '#10b981' : '#ef4444';
+            statusDot.style.boxShadow = `0 0 10px ${color === 'green' ? '#10b981' : '#ef4444'}`;
+            
+            const deviceStatus = document.getElementById('deviceStatus');
+            const statusIcon = color === 'green' ? 'fa-circle' : 'fa-circle';
+            const statusColor = color === 'green' ? 'green' : 'red';
+            deviceStatus.innerHTML = `<i class="fas ${statusIcon} text-xs"></i> ${text === 'Connected' ? 'Active' : 'Disconnected'}`;
+            deviceStatus.className = `text-${statusColor}-400 text-sm flex items-center gap-2`;
+        }
+        
+        // Handle page visibility change to pause/resume video
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && stream) {
+                stream.getTracks().forEach(track => track.enabled = false);
+            } else if (!document.hidden && stream) {
+                stream.getTracks().forEach(track => track.enabled = true);
+            }
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (settingsOpen) {
+                    toggleSettings();
+                } else if (isFullscreen) {
+                    toggleFullscreen();
+                }
+            } else if (e.key === 'm' || e.key === 'M') {
+                showDock(); // Show dock when using shortcuts
+                toggleMirror();
+            } else if (e.key === 's' || e.key === 'S') {
+                showDock();
+                toggleSettings();
+            } else if (e.key === 'h' || e.key === 'H') {
+                const dockContainer = document.getElementById('dockContainer');
+                if (dockContainer.classList.contains('minimized')) {
+                    showDock();
+                } else {
+                    hideDock();
+                }
+            } else if (e.key === 'f' || e.key === 'F') {
+                showDock();
+                toggleFullscreen();
+            } else if (e.key === 'i' || e.key === 'I') {
+                showDock();
+                openImagePicker();
+            } else if (e.key === 'w' || e.key === 'W') {
+                showDock();
+                openWebviewDialog();
+            }
+        });
+        
+        // Handle fullscreen change events
+        document.addEventListener('fullscreenchange', () => {
+            isFullscreen = !!document.fullscreenElement;
+            document.getElementById('fullscreenIcon').className = isFullscreen ? 'fas fa-compress' : 'fas fa-expand';
+        });
+        
+        // Handle device changes (camera connected/disconnected)
+        navigator.mediaDevices.addEventListener('devicechange', async () => {
+            await initializeCamera();
+            await populateCameraList();
+        });
+        
+        // Image handling functions
+        function openImagePicker() {
+            document.getElementById('imagePicker').click();
+        }
+        
+        function handleImageSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                addImageToWorkspace(file);
+            }
+            // Reset the input so the same file can be selected again
+            event.target.value = '';
+        }
+        
+        function addImageToWorkspace(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageId = 'image-' + imageIdCounter++;
+                const imageContainer = document.getElementById('imageContainer');
+                
+                // Create image overlay element
+                const imageOverlay = document.createElement('div');
+                imageOverlay.id = imageId;
+                imageOverlay.className = 'image-overlay';
+                imageOverlay.style.position = 'absolute';
+                imageOverlay.style.left = '50px';
+                imageOverlay.style.top = '50px';
+                imageOverlay.style.width = '300px';
+                imageOverlay.style.height = 'auto';
+                imageOverlay.style.pointerEvents = 'auto';
+                
+                // Store original image data
+                imageOverlay.dataset.originalSrc = e.target.result;
+                imageOverlay.dataset.hasBackground = 'true';
+                
+                // Create image element
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.onload = function() {
+                    // Maintain aspect ratio
+                    const aspectRatio = img.naturalHeight / img.naturalWidth;
+                    imageOverlay.style.height = (300 * aspectRatio) + 'px';
+                };
+                
+                // Create menu button
+                const menuBtn = document.createElement('div');
+                menuBtn.className = 'image-menu-btn';
+                menuBtn.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+                menuBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleImageMenu(imageId);
+                };
+                
+                // Create menu panel
+                const menu = createImageMenu(imageId);
+                
+                // Create processing overlay
+                const processingOverlay = document.createElement('div');
+                processingOverlay.className = 'image-processing';
+                processingOverlay.innerHTML = '<div class="processing-spinner"></div>';
+                
+                // Resize handle
+                const resizeHandle = document.createElement('div');
+                resizeHandle.className = 'resize-handle';
+                
+                // Assemble the overlay
+                imageOverlay.appendChild(img);
+                imageOverlay.appendChild(menuBtn);
+                imageOverlay.appendChild(menu);
+                imageOverlay.appendChild(processingOverlay);
+                imageOverlay.appendChild(resizeHandle);
+                
+                // Add to container
+                imageContainer.appendChild(imageOverlay);
+                
+                // Track the image
+                activeImages.push(imageId);
+                
+                // Make draggable
+                makeDraggable(imageOverlay);
+                makeResizable(imageOverlay, resizeHandle);
+                makeScrollResizable(imageOverlay);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function createImageMenu(imageId) {
+            const menu = document.createElement('div');
+            menu.className = 'image-menu';
+            menu.id = `menu-${imageId}`;
+            
+            // Transparency control
+            const transparencyControl = document.createElement('div');
+            transparencyControl.className = 'transparency-control';
+            
+            const transparencyLabel = document.createElement('div');
+            transparencyLabel.className = 'transparency-label';
+            transparencyLabel.innerHTML = `
+                <span>Opacity</span>
+                <span id="opacity-value-${imageId}">100%</span>
+            `;
+            
+            const transparencySlider = document.createElement('input');
+            transparencySlider.type = 'range';
+            transparencySlider.className = 'transparency-slider';
+            transparencySlider.id = `opacity-${imageId}`;
+            transparencySlider.min = '0';
+            transparencySlider.max = '100';
+            transparencySlider.value = '100';
+            
+            // Add multiple event listeners to ensure it works
+            transparencySlider.addEventListener('input', function(e) {
+                e.stopPropagation();
+                updateImageOpacity(imageId, this.value);
+            });
+            
+            transparencySlider.addEventListener('change', function(e) {
+                e.stopPropagation();
+                updateImageOpacity(imageId, this.value);
+            });
+            
+            // Prevent drag events from interfering
+            transparencySlider.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+            
+            transparencySlider.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            
+            transparencyControl.appendChild(transparencyLabel);
+            transparencyControl.appendChild(transparencySlider);
+            
+            // Prevent dragging when interacting with transparency control
+            transparencyControl.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+            
+            // Remove background button
+            const removeBackgroundItem = document.createElement('div');
+            removeBackgroundItem.className = 'image-menu-item';
+            removeBackgroundItem.innerHTML = '<i class="fas fa-magic"></i><span>Remove Background</span>';
+            removeBackgroundItem.onclick = () => {
+                removeImageBackground(imageId);
+                closeAllMenus();
+            };
+            
+            // Restore original button
+            const restoreItem = document.createElement('div');
+            restoreItem.className = 'image-menu-item';
+            restoreItem.innerHTML = '<i class="fas fa-undo"></i><span>Restore Original</span>';
+            restoreItem.onclick = () => {
+                restoreOriginalImage(imageId);
+                closeAllMenus();
+            };
+            
+            // Bring to front button
+            const layerItem = document.createElement('div');
+            layerItem.className = 'image-menu-item';
+            layerItem.innerHTML = '<i class="fas fa-layer-group"></i><span>Bring to Front</span>';
+            layerItem.onclick = () => {
+                bringToFront(imageId);
+                closeAllMenus();
+            };
+            
+            // Delete button
+            const deleteItem = document.createElement('div');
+            deleteItem.className = 'image-menu-item danger';
+            deleteItem.innerHTML = '<i class="fas fa-trash"></i><span>Delete Image</span>';
+            deleteItem.onclick = () => {
+                removeImage(imageId);
+                closeAllMenus();
+            };
+            
+            // Assemble menu
+            menu.appendChild(transparencyControl);
+            menu.appendChild(removeBackgroundItem);
+            menu.appendChild(restoreItem);
+            menu.appendChild(layerItem);
+            menu.appendChild(deleteItem);
+            
+            return menu;
+        }
+        
+        function toggleImageMenu(imageId) {
+            const menu = document.getElementById(`menu-${imageId}`);
+            const allMenus = document.querySelectorAll('.image-menu');
+            
+            // Close all other menus
+            allMenus.forEach(m => {
+                if (m.id !== `menu-${imageId}`) {
+                    m.classList.remove('active');
+                }
+            });
+            
+            // Toggle this menu
+            menu.classList.toggle('active');
+        }
+        
+        function closeAllMenus() {
+            document.querySelectorAll('.image-menu, .webview-menu').forEach(menu => {
+                menu.classList.remove('active');
+            });
+        }
+        
+        function updateImageOpacity(imageId, value) {
+            const imageOverlay = document.getElementById(imageId);
+            if (imageOverlay) {
+                const img = imageOverlay.querySelector('img');
+                if (img) {
+                    img.style.opacity = value / 100;
+                }
+                const label = document.getElementById(`opacity-value-${imageId}`);
+                if (label) {
+                    label.textContent = `${value}%`;
+                }
+            }
+        }
+        
+        // Make it globally accessible
+        window.updateImageOpacity = updateImageOpacity;
+        
+        function removeImageBackground(imageId) {
+            const imageOverlay = document.getElementById(imageId);
+            const img = imageOverlay.querySelector('img');
+            const processingOverlay = imageOverlay.querySelector('.image-processing');
+            
+            // Show processing overlay
+            processingOverlay.classList.add('active');
+            
+            // Create canvas for processing
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            const tempImg = new Image();
+            tempImg.crossOrigin = 'anonymous';
+            tempImg.onload = function() {
+                canvas.width = tempImg.width;
+                canvas.height = tempImg.height;
+                ctx.drawImage(tempImg, 0, 0);
+                
+                try {
+                    // Simple background removal based on white/light colors
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+                    
+                    // Detect background color (sample corners)
+                    const corners = [
+                        0, // top-left
+                        (canvas.width - 1) * 4, // top-right
+                        (canvas.height - 1) * canvas.width * 4, // bottom-left
+                        ((canvas.height - 1) * canvas.width + canvas.width - 1) * 4 // bottom-right
+                    ];
+                    
+                    let bgR = 0, bgG = 0, bgB = 0;
+                    corners.forEach(idx => {
+                        bgR += data[idx];
+                        bgG += data[idx + 1];
+                        bgB += data[idx + 2];
+                    });
+                    bgR = Math.round(bgR / 4);
+                    bgG = Math.round(bgG / 4);
+                    bgB = Math.round(bgB / 4);
+                    
+                    // Process each pixel
+                    const tolerance = 30; // Adjust for sensitivity
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        
+                        // Check if pixel is similar to background
+                        const diffR = Math.abs(r - bgR);
+                        const diffG = Math.abs(g - bgG);
+                        const diffB = Math.abs(b - bgB);
+                        
+                        if (diffR < tolerance && diffG < tolerance && diffB < tolerance) {
+                            // Make pixel transparent
+                            data[i + 3] = 0;
+                        } else {
+                            // Edge smoothing
+                            if (diffR < tolerance * 2 && diffG < tolerance * 2 && diffB < tolerance * 2) {
+                                data[i + 3] = Math.round(data[i + 3] * 0.5);
+                            }
+                        }
+                    }
+                    
+                    // Put the processed image back
+                    ctx.putImageData(imageData, 0, 0);
+                    
+                    // Update image with transparent background
+                    img.src = canvas.toDataURL('image/png');
+                    imageOverlay.dataset.hasBackground = 'false';
+                    
+                } catch (error) {
+                    console.error('Background removal error:', error);
+                    
+                    // Try OpenCV if available
+                    if (cvReady && typeof cv !== 'undefined') {
+                        tryOpenCVBackgroundRemoval(canvas, img, imageOverlay);
+                    } else {
+                        alert('Background removal failed. Please try adjusting transparency instead.');
+                    }
+                }
+                
+                // Hide processing overlay
+                setTimeout(() => {
+                    processingOverlay.classList.remove('active');
+                }, 500);
+            };
+            
+            tempImg.onerror = function() {
+                processingOverlay.classList.remove('active');
+                alert('Failed to load image for processing.');
+            };
+            
+            tempImg.src = img.src;
+        }
+        
+        function tryOpenCVBackgroundRemoval(canvas, img, imageOverlay) {
+            try {
+                const src = cv.imread(canvas);
+                const dst = new cv.Mat();
+                const gray = new cv.Mat();
+                const mask = new cv.Mat();
+                
+                // Convert to grayscale for simple thresholding
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                
+                // Apply threshold to create mask
+                cv.threshold(gray, mask, 240, 255, cv.THRESH_BINARY_INV);
+                
+                // Apply morphology to clean up mask
+                const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+                cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
+                cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
+                
+                // Apply mask to alpha channel
+                const rgba = new cv.Mat();
+                cv.cvtColor(src, rgba, cv.COLOR_RGB2RGBA);
+                
+                const channels = new cv.MatVector();
+                cv.split(rgba, channels);
+                channels.set(3, mask);
+                cv.merge(channels, rgba);
+                
+                // Show result
+                cv.imshow(canvas, rgba);
+                img.src = canvas.toDataURL('image/png');
+                imageOverlay.dataset.hasBackground = 'false';
+                
+                // Cleanup
+                src.delete();
+                dst.delete();
+                gray.delete();
+                mask.delete();
+                kernel.delete();
+                rgba.delete();
+                channels.delete();
+            } catch (e) {
+                console.error('OpenCV fallback failed:', e);
+            }
+        }
+        
+        function restoreOriginalImage(imageId) {
+            const imageOverlay = document.getElementById(imageId);
+            const img = imageOverlay.querySelector('img');
+            img.src = imageOverlay.dataset.originalSrc;
+            imageOverlay.dataset.hasBackground = 'true';
+        }
+        
+        function removeImage(imageId) {
+            const element = document.getElementById(imageId);
+            if (element) {
+                element.remove();
+                activeImages = activeImages.filter(id => id !== imageId);
+                
+                // Hide container if no images
+                if (activeImages.length === 0) {
+                    document.getElementById('imageContainer').style.pointerEvents = 'none';
+                }
+            }
+        }
+        
+        function bringToFront(imageId) {
+            const element = document.getElementById(imageId);
+            if (element) {
+                // Find highest z-index
+                let maxZ = 30;
+                document.querySelectorAll('.image-overlay').forEach(img => {
+                    const z = parseInt(window.getComputedStyle(img).zIndex) || 30;
+                    if (z > maxZ) maxZ = z;
+                });
+                element.style.zIndex = maxZ + 1;
+            }
+        }
+        
+        function makeDraggable(element) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            let isDragging = false;
+            
+            element.addEventListener('mousedown', dragMouseDown);
+            
+            function dragMouseDown(e) {
+                // Don't drag if clicking on controls, menu, or resize handle
+                if (e.target.closest('.image-menu-btn') || 
+                    e.target.closest('.image-menu') || 
+                    e.target.closest('.webview-menu') ||
+                    e.target.closest('.resize-handle') ||
+                    e.target.closest('.transparency-control') ||
+                    e.target.classList.contains('transparency-slider') ||
+                    e.target.tagName === 'IFRAME') {
+                    return;
+                }
+                
+                e.preventDefault();
+                
+                // Close any open menus when starting to drag
+                closeAllMenus();
+                
+                isDragging = true;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                
+                document.addEventListener('mouseup', closeDragElement);
+                document.addEventListener('mousemove', elementDrag);
+                element.classList.add('dragging');
+                
+                // Prevent iframe from capturing mouse events during drag
+                const iframe = element.querySelector('.webview-frame');
+                if (iframe) {
+                    iframe.style.pointerEvents = 'none';
+                }
+            }
+            
+            function elementDrag(e) {
+                if (!isDragging) return;
+                
+                e.preventDefault();
+                
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                
+                const newTop = element.offsetTop - pos2;
+                const newLeft = element.offsetLeft - pos1;
+                
+                // Keep within viewport
+                const maxX = window.innerWidth - element.offsetWidth;
+                const maxY = window.innerHeight - element.offsetHeight;
+                
+                element.style.top = Math.max(0, Math.min(newTop, maxY)) + "px";
+                element.style.left = Math.max(0, Math.min(newLeft, maxX)) + "px";
+            }
+            
+            function closeDragElement(e) {
+                if (!isDragging) return;
+                
+                isDragging = false;
+                document.removeEventListener('mouseup', closeDragElement);
+                document.removeEventListener('mousemove', elementDrag);
+                element.classList.remove('dragging');
+                
+                // Re-enable iframe pointer events
+                const iframe = element.querySelector('.webview-frame');
+                if (iframe) {
+                    iframe.style.pointerEvents = 'auto';
+                }
+            }
+        }
+        
+        function makeResizable(element, handle) {
+            let startX = 0, startY = 0, startWidth = 0, startHeight = 0;
+            let isResizing = false;
+            
+            handle.addEventListener('mousedown', initResize);
+            
+            function initResize(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startWidth = parseInt(window.getComputedStyle(element).width, 10);
+                startHeight = parseInt(window.getComputedStyle(element).height, 10);
+                
+                // Add listeners to document to ensure we catch mouseup even outside element
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+                
+                // Add class to indicate resizing
+                element.classList.add('resizing');
+                
+                // Prevent iframe from capturing mouse events during resize
+                const iframe = element.querySelector('.webview-frame');
+                if (iframe) {
+                    iframe.style.pointerEvents = 'none';
+                }
+            }
+            
+            function doResize(e) {
+                if (!isResizing) return;
+                
+                e.preventDefault();
+                const newWidth = startWidth + e.clientX - startX;
+                const newHeight = startHeight + e.clientY - startY;
+                
+                // Check if it's an image or webview
+                const img = element.querySelector('img');
+                if (img) {
+                    // For images, maintain aspect ratio
+                    const aspectRatio = img.naturalHeight / img.naturalWidth;
+                    element.style.width = Math.max(100, newWidth) + 'px';
+                    element.style.height = Math.max(100, newWidth * aspectRatio) + 'px';
+                } else {
+                    // For webviews, allow free resize
+                    element.style.width = Math.max(200, newWidth) + 'px';
+                    element.style.height = Math.max(150, newHeight) + 'px';
+                }
+            }
+            
+            function stopResize(e) {
+                if (!isResizing) return;
+                
+                isResizing = false;
+                document.removeEventListener('mousemove', doResize);
+                document.removeEventListener('mouseup', stopResize);
+                
+                // Remove resizing class
+                element.classList.remove('resizing');
+                
+                // Re-enable iframe pointer events
+                const iframe = element.querySelector('.webview-frame');
+                if (iframe) {
+                    iframe.style.pointerEvents = 'auto';
+                }
+            }
+        }
+        
+        function makeScrollResizable(element) {
+            element.addEventListener('wheel', function(e) {
+                // Only resize if hovering over the element and not over controls
+                if (e.target.closest('.image-menu-btn') || 
+                    e.target.closest('.image-menu') || 
+                    e.target.closest('.webview-menu') ||
+                    e.target.closest('.resize-handle')) {
+                    return;
+                }
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const currentWidth = parseInt(element.style.width, 10);
+                const currentHeight = parseInt(element.style.height, 10);
+                let aspectRatio = currentHeight / currentWidth;
+                
+                // For images, maintain natural aspect ratio
+                const img = element.querySelector('img');
+                if (img) {
+                    aspectRatio = img.naturalHeight / img.naturalWidth;
+                }
+                
+                // Calculate new size based on scroll direction
+                const scaleFactor = e.deltaY > 0 ? 0.95 : 1.05; // Scroll down = smaller, up = larger
+                const newWidth = Math.max(200, Math.min(window.innerWidth * 0.8, currentWidth * scaleFactor));
+                const newHeight = newWidth * aspectRatio;
+                
+                // Apply new size with smooth transition
+                element.style.transition = 'width 0.1s ease, height 0.1s ease';
+                element.style.width = newWidth + 'px';
+                element.style.height = newHeight + 'px';
+                
+                // Reset transition after animation
+                setTimeout(() => {
+                    element.style.transition = 'transform 0.1s ease, box-shadow 0.2s ease';
+                }, 100);
+            }, { passive: false });
+        }
+        
+        // Drag and drop handling
+        let dragCounter = 0;
+        
+        document.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            
+            if (e.dataTransfer.types.includes('Files')) {
+                document.getElementById('dropOverlay').classList.add('active');
+            }
+        });
+        
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            
+            if (dragCounter === 0) {
+                document.getElementById('dropOverlay').classList.remove('active');
+                document.getElementById('dropZone').classList.remove('drag-over');
+            }
+        });
+        
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            
+            document.getElementById('dropOverlay').classList.remove('active');
+            document.getElementById('dropZone').classList.remove('drag-over');
+            
+            const files = Array.from(e.dataTransfer.files);
+            files.forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    addImageToWorkspace(file);
+                }
+            });
+        });
+        
+        // Drop zone specific handlers
+        const dropZone = document.getElementById('dropZone');
+        dropZone.addEventListener('dragenter', () => {
+            dropZone.classList.add('drag-over');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+        
+        // Webview functions
+        function openWebviewDialog() {
+            document.getElementById('urlDialog').classList.add('active');
+            document.getElementById('urlInput').focus();
+            document.getElementById('urlInput').select();
+        }
+        
+        function closeUrlDialog() {
+            document.getElementById('urlDialog').classList.remove('active');
+            document.getElementById('urlInput').value = 'https://';
+        }
+        
+        function setUrlInput(url) {
+            document.getElementById('urlInput').value = url;
+        }
+        
+        function addWebview() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url || url === 'https://') {
+                alert('Please enter a valid URL');
+                return;
+            }
+            
+            // Ensure URL has protocol
+            let finalUrl = url;
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                finalUrl = 'https://' + url;
+            }
+            
+            createWebview(finalUrl);
+            closeUrlDialog();
+        }
+        
+        function createWebview(url) {
+            const webviewId = 'webview-' + webviewIdCounter++;
+            const webviewContainer = document.getElementById('webviewContainer');
+            
+            // Create webview overlay
+            const webviewOverlay = document.createElement('div');
+            webviewOverlay.id = webviewId;
+            webviewOverlay.className = 'webview-overlay';
+            webviewOverlay.style.position = 'absolute';
+            webviewOverlay.style.left = '100px';
+            webviewOverlay.style.top = '100px';
+            webviewOverlay.style.width = '600px';
+            webviewOverlay.style.height = '400px';
+            webviewOverlay.style.pointerEvents = 'auto';
+            
+            // Store data
+            webviewOverlay.dataset.currentUrl = url;
+            webviewOverlay.dataset.history = JSON.stringify([url]);
+            webviewOverlay.dataset.historyIndex = '0';
+            webviewOverlay.dataset.hasBackground = 'true';
+            
+            // Create iframe
+            const iframe = document.createElement('iframe');
+            iframe.className = 'webview-frame';
+            iframe.src = url;
+            iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+            
+            // Create drag handle (invisible area for dragging)
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'webview-drag-handle';
+            
+            // Menu button (upper right)
+            const menuBtn = document.createElement('div');
+            menuBtn.className = 'image-menu-btn';
+            menuBtn.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+            menuBtn.onclick = (e) => {
+                e.stopPropagation();
+                toggleWebviewMenu(webviewId);
+            };
+            
+            // Create menu
+            const menu = createWebviewMenu(webviewId, url);
+            
+            // Create resize handle
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            
+            // Assemble webview
+            webviewOverlay.appendChild(iframe);
+            webviewOverlay.appendChild(dragHandle);
+            webviewOverlay.appendChild(menuBtn);
+            webviewOverlay.appendChild(menu);
+            webviewOverlay.appendChild(resizeHandle);
+            
+            // Add to container
+            webviewContainer.appendChild(webviewOverlay);
+            activeWebviews.push(webviewId);
+            
+            // Make interactive
+            makeDraggable(webviewOverlay);
+            makeResizable(webviewOverlay, resizeHandle);
+            makeScrollResizable(webviewOverlay);
+        }
+        
+        function createWebviewMenu(webviewId, initialUrl) {
+            const menu = document.createElement('div');
+            menu.className = 'webview-menu';
+            menu.id = `menu-${webviewId}`;
+            
+            // Navigation controls
+            const navControls = document.createElement('div');
+            navControls.className = 'webview-nav-controls';
+            
+            const backBtn = document.createElement('button');
+            backBtn.className = 'webview-nav-btn';
+            backBtn.id = `back-${webviewId}`;
+            backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
+            backBtn.disabled = true;
+            backBtn.onclick = () => navigateWebview(webviewId, 'back');
+            
+            const forwardBtn = document.createElement('button');
+            forwardBtn.className = 'webview-nav-btn';
+            forwardBtn.id = `forward-${webviewId}`;
+            forwardBtn.innerHTML = '<i class="fas fa-arrow-right"></i>';
+            forwardBtn.disabled = true;
+            forwardBtn.onclick = () => navigateWebview(webviewId, 'forward');
+            
+            const refreshBtn = document.createElement('button');
+            refreshBtn.className = 'webview-nav-btn';
+            refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+            refreshBtn.onclick = () => navigateWebview(webviewId, 'refresh');
+            
+            const homeBtn = document.createElement('button');
+            homeBtn.className = 'webview-nav-btn';
+            homeBtn.innerHTML = '<i class="fas fa-home"></i>';
+            homeBtn.onclick = () => navigateToUrl(webviewId, initialUrl);
+            
+            navControls.appendChild(backBtn);
+            navControls.appendChild(forwardBtn);
+            navControls.appendChild(refreshBtn);
+            navControls.appendChild(homeBtn);
+            
+            // URL input container
+            const urlContainer = document.createElement('div');
+            urlContainer.className = 'webview-url-container';
+            
+            const urlLabel = document.createElement('div');
+            urlLabel.className = 'webview-url-label';
+            urlLabel.textContent = 'URL';
+            
+            const urlInput = document.createElement('input');
+            urlInput.type = 'text';
+            urlInput.className = 'webview-url-input';
+            urlInput.id = `url-${webviewId}`;
+            urlInput.value = initialUrl;
+            urlInput.onkeypress = (e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                    navigateToUrl(webviewId, urlInput.value);
+                }
+            };
+            urlInput.onclick = (e) => e.stopPropagation();
+            urlInput.onmousedown = (e) => e.stopPropagation();
+            
+            urlContainer.appendChild(urlLabel);
+            urlContainer.appendChild(urlInput);
+            
+            // Transparency control
+            const transparencyControl = document.createElement('div');
+            transparencyControl.className = 'transparency-control';
+            
+            const transparencyLabel = document.createElement('div');
+            transparencyLabel.className = 'transparency-label';
+            transparencyLabel.innerHTML = `
+                <span>Opacity</span>
+                <span id="opacity-value-${webviewId}">100%</span>
+            `;
+            
+            const transparencySlider = document.createElement('input');
+            transparencySlider.type = 'range';
+            transparencySlider.className = 'transparency-slider';
+            transparencySlider.min = '0';
+            transparencySlider.max = '100';
+            transparencySlider.value = '100';
+            
+            transparencySlider.addEventListener('input', function(e) {
+                e.stopPropagation();
+                updateWebviewOpacity(webviewId, this.value);
+            });
+            
+            transparencySlider.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+            
+            transparencyControl.appendChild(transparencyLabel);
+            transparencyControl.appendChild(transparencySlider);
+            
+            transparencyControl.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+            
+            // Remove background button
+            const removeBackgroundItem = document.createElement('div');
+            removeBackgroundItem.className = 'image-menu-item';
+            removeBackgroundItem.innerHTML = '<i class="fas fa-magic"></i><span>Remove Background</span>';
+            removeBackgroundItem.onclick = () => {
+                toggleWebviewBackground(webviewId);
+                closeAllMenus();
+            };
+            
+            // Bring to front button
+            const layerItem = document.createElement('div');
+            layerItem.className = 'image-menu-item';
+            layerItem.innerHTML = '<i class="fas fa-layer-group"></i><span>Bring to Front</span>';
+            layerItem.onclick = () => {
+                bringWebviewToFront(webviewId);
+                closeAllMenus();
+            };
+            
+            // Delete button
+            const deleteItem = document.createElement('div');
+            deleteItem.className = 'image-menu-item danger';
+            deleteItem.innerHTML = '<i class="fas fa-trash"></i><span>Remove Webpage</span>';
+            deleteItem.onclick = () => {
+                removeWebview(webviewId);
+                closeAllMenus();
+            };
+            
+            // Assemble menu
+            menu.appendChild(navControls);
+            menu.appendChild(urlContainer);
+            menu.appendChild(transparencyControl);
+            menu.appendChild(removeBackgroundItem);
+            menu.appendChild(layerItem);
+            menu.appendChild(deleteItem);
+            
+            // Prevent dragging when interacting with menu
+            menu.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+            });
+            
+            return menu;
+        }
+        
+        function toggleWebviewMenu(webviewId) {
+            const menu = document.getElementById(`menu-${webviewId}`);
+            const allMenus = document.querySelectorAll('.image-menu, .webview-menu');
+            
+            allMenus.forEach(m => {
+                if (m.id !== `menu-${webviewId}`) {
+                    m.classList.remove('active');
+                }
+            });
+            
+            menu.classList.toggle('active');
+        }
+        
+        function updateWebviewOpacity(webviewId, value) {
+            const webviewOverlay = document.getElementById(webviewId);
+            if (webviewOverlay) {
+                // Apply opacity to the entire webview container, not just the iframe
+                webviewOverlay.style.opacity = value / 100;
+                
+                const label = document.getElementById(`opacity-value-${webviewId}`);
+                if (label) {
+                    label.textContent = `${value}%`;
+                }
+            }
+        }
+        
+        function navigateWebview(webviewId, action) {
+            const webviewOverlay = document.getElementById(webviewId);
+            const iframe = webviewOverlay.querySelector('.webview-frame');
+            const urlInput = document.getElementById(`url-${webviewId}`);
+            const backBtn = document.getElementById(`back-${webviewId}`);
+            const forwardBtn = document.getElementById(`forward-${webviewId}`);
+            
+            const history = JSON.parse(webviewOverlay.dataset.history);
+            let historyIndex = parseInt(webviewOverlay.dataset.historyIndex);
+            
+            if (action === 'back' && historyIndex > 0) {
+                historyIndex--;
+                iframe.src = history[historyIndex];
+                if (urlInput) urlInput.value = history[historyIndex];
+            } else if (action === 'forward' && historyIndex < history.length - 1) {
+                historyIndex++;
+                iframe.src = history[historyIndex];
+                if (urlInput) urlInput.value = history[historyIndex];
+            } else if (action === 'refresh') {
+                iframe.src = iframe.src;
+            }
+            
+            webviewOverlay.dataset.historyIndex = historyIndex;
+            if (backBtn) backBtn.disabled = historyIndex === 0;
+            if (forwardBtn) forwardBtn.disabled = historyIndex === history.length - 1;
+        }
+        
+        function navigateToUrl(webviewId, url) {
+            if (!url) return;
+            
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+            }
+            
+            const webviewOverlay = document.getElementById(webviewId);
+            const iframe = webviewOverlay.querySelector('.webview-frame');
+            const urlInput = document.getElementById(`url-${webviewId}`);
+            const backBtn = document.getElementById(`back-${webviewId}`);
+            const forwardBtn = document.getElementById(`forward-${webviewId}`);
+            
+            const history = JSON.parse(webviewOverlay.dataset.history);
+            let historyIndex = parseInt(webviewOverlay.dataset.historyIndex);
+            
+            // Add to history
+            history.splice(historyIndex + 1);
+            history.push(url);
+            historyIndex = history.length - 1;
+            
+            iframe.src = url;
+            if (urlInput) urlInput.value = url;
+            webviewOverlay.dataset.history = JSON.stringify(history);
+            webviewOverlay.dataset.historyIndex = historyIndex;
+            
+            if (backBtn) backBtn.disabled = historyIndex === 0;
+            if (forwardBtn) forwardBtn.disabled = true;
+        }
+        
+        function toggleWebviewBackground(webviewId) {
+            const webviewOverlay = document.getElementById(webviewId);
+            const iframe = webviewOverlay.querySelector('.webview-frame');
+            const hasBackground = webviewOverlay.dataset.hasBackground === 'true';
+            
+            if (hasBackground) {
+                // Remove background (make transparent)
+                iframe.classList.add('no-background');
+                webviewOverlay.style.background = 'transparent';
+                webviewOverlay.dataset.hasBackground = 'false';
+                
+                // Try to inject CSS to remove background from iframe content
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    const style = iframeDoc.createElement('style');
+                    style.textContent = `
+                        body { background: transparent !important; }
+                        html { background: transparent !important; }
+                    `;
+                    iframeDoc.head.appendChild(style);
+                } catch (e) {
+                    console.log('Cannot modify iframe content due to cross-origin restrictions');
+                }
+            } else {
+                // Restore background
+                iframe.classList.remove('no-background');
+                webviewOverlay.style.background = 'white';
+                webviewOverlay.dataset.hasBackground = 'true';
+            }
+        }
+        
+        function removeWebview(webviewId) {
+            const element = document.getElementById(webviewId);
+            if (element) {
+                element.remove();
+                activeWebviews = activeWebviews.filter(id => id !== webviewId);
+            }
+        }
+        
+        function bringWebviewToFront(webviewId) {
+            const element = document.getElementById(webviewId);
+            if (element) {
+                let maxZ = 30;
+                document.querySelectorAll('.webview-overlay, .image-overlay').forEach(el => {
+                    const z = parseInt(window.getComputedStyle(el).zIndex) || 30;
+                    if (z > maxZ) maxZ = z;
+                });
+                element.style.zIndex = maxZ + 1;
+            }
+        }
+        
+        // Make updateWebviewOpacity globally accessible
+        window.updateWebviewOpacity = updateWebviewOpacity;
+    </script>
+</body>
+</html>

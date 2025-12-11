@@ -1,0 +1,37 @@
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.bak
+
+# SSL certificates (sensitive)
+*.pem
+*.key
+*.crt
+
+# Nginx config backups
+*.conf.bak
