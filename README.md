@@ -2,6 +2,8 @@
 
 A lightweight, web-based interface for the eGlass lightboard USB camera system. No downloads required - works directly in your browser.
 
+Part of the open-eGlass project - Fun projects that will help you make the most of your eGlass Lightboard!
+
 🌐 **Live Demo**: [https://fusion.eglass.io](https://fusion.eglass.io)
 
 ## Features
