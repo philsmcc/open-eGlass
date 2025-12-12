@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script async src="https://docs.opencv.org/4.5.5/opencv.js" type="text/javascript"></script>
-    <script src="enhanced_mode_fix.js" defer></script>
+    <script src="enhanced_calibration_fix.js" defer></script>
     <style>
         @keyframes glow {
             0%, 100% { box-shadow: 0 0 20px rgba(0, 97, 239, 0.5), 0 0 40px rgba(0, 97, 239, 0.3); }
@@ -3281,7 +3281,7 @@
         window.toggleAutoDetect = toggleAutoDetect;
         window.updateColorUI = updateColorUI;
     </script>
-<script src="enhanced_mode_fix.js" defer></script>
+<script src="enhanced_calibration_fix.js" defer></script>
 </body>
 </html><!-- Add this script tag after the OpenCV script tag -->
 <script>
@@ -3438,5 +3438,98 @@ document.addEventListener('DOMContentLoaded', function() {
             settingsDiv.insertBefore(calibrateBtn, settingsDiv.firstChild.nextSibling);
         }
     }, 1000);
+});
+</script><!-- Add this to the Enhanced Settings panel -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait for enhanced settings to be available
+    setTimeout(() => {
+        const settingsPanel = document.getElementById('enhancedSettings');
+        if (!settingsPanel) return;
+        
+        // Check if controls already exist
+        if (document.getElementById('luminanceSlider')) return;
+        
+        // Find the sensitivity slider div
+        const sensitivityDiv = Array.from(settingsPanel.querySelectorAll('div')).find(div => 
+            div.textContent.includes('Sensitivity'));
+        
+        if (sensitivityDiv) {
+            // Create luminance control
+            const luminanceControl = document.createElement('div');
+            luminanceControl.className = 'mb-4';
+            luminanceControl.innerHTML = `
+                <label class="text-gray-300 text-sm mb-2 block">
+                    Luminance Threshold: <span id="luminanceValue">${enhancedSettings.luminanceThreshold || 100}</span>
+                </label>
+                <input type="range" id="luminanceSlider" min="30" max="200" value="${enhancedSettings.luminanceThreshold || 100}" 
+                       class="w-full slider-control" style="
+                           -webkit-appearance: none;
+                           appearance: none;
+                           height: 6px;
+                           border-radius: 3px;
+                           background: rgba(75, 85, 99, 0.5);
+                           outline: none;
+                       ">
+                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Dark</span>
+                    <span>Bright</span>
+                </div>
+            `;
+            
+            // Insert before sensitivity control
+            settingsPanel.insertBefore(luminanceControl, sensitivityDiv);
+            
+            // Add event listener
+            document.getElementById('luminanceSlider').addEventListener('input', function(e) {
+                enhancedSettings.luminanceThreshold = parseInt(e.target.value);
+                document.getElementById('luminanceValue').textContent = e.target.value;
+            });
+            
+            // Style the slider thumb
+            const styleSheet = document.createElement('style');
+            styleSheet.textContent = `
+                #luminanceSlider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    background: ${enhancedSettings.inkColor === 'green' ? '#10b981' : '#0096ff'};
+                    cursor: pointer;
+                }
+                #luminanceSlider::-moz-range-thumb {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    background: ${enhancedSettings.inkColor === 'green' ? '#10b981' : '#0096ff'};
+                    cursor: pointer;
+                }
+            `;
+            document.head.appendChild(styleSheet);
+        }
+        
+        // Update the calibrate button if it exists
+        const calibrateBtn = document.getElementById('calibrateBtn');
+        if (calibrateBtn) {
+            calibrateBtn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Calibrate Detection';
+            calibrateBtn.className = 'w-full px-3 py-2 mb-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300';
+        }
+        
+        // Add detection tips
+        const tipsDiv = document.createElement('div');
+        tipsDiv.className = 'mt-4 p-3 bg-gray-800 rounded-lg text-xs text-gray-400';
+        tipsDiv.innerHTML = `
+            <div class="font-semibold text-gray-300 mb-2">Quick Tips:</div>
+            <ul class="space-y-1">
+                <li>• Lower threshold = detect dimmer ink</li>
+                <li>• Higher threshold = only bright ink</li>
+                <li>• Calibrate with your actual ink color</li>
+                <li>• Adjust brightness for visibility</li>
+            </ul>
+        `;
+        settingsPanel.appendChild(tipsDiv);
+        
+    }, 1500);
 });
 </script>
