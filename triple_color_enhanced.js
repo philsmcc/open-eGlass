@@ -20,7 +20,7 @@
         enhancedSettings.blueCalibration = { r: 50, g: 50, b: 180, active: true };
         enhancedSettings.pinkCalibration = { r: 180, g: 50, b: 120, active: true }; // New pink
         enhancedSettings.tolerance = 70;
-        enhancedSettings.pinkTolerance = 120; // Much higher tolerance for pink since it's dimmer
+        enhancedSettings.pinkTolerance = 80; // Moderate tolerance for pink (0 = OFF)
         enhancedSettings.brightness = enhancedSettings.brightness || 1.5;
         enhancedSettings.pinkBrightness = 2.0; // Extra boost for pink
         enhancedSettings.glow = enhancedSettings.glow || 10;
@@ -136,36 +136,29 @@
                     }
                 }
                 
-                // Check pink if active (MUCH more lenient since pink is dimmer)
-                if (pinkCal.active) {
+                // Check pink if active AND tolerance > 0 (0 means OFF)
+                if (pinkCal.active && pinkTolerance > 0) {
                     const pinkDist = Math.sqrt(
                         Math.pow(r - pinkCal.r, 2) +
                         Math.pow(g - pinkCal.g, 2) +
                         Math.pow(b - pinkCal.b, 2)
                     );
                     
-                    // Much more sensitive pink detection
-                    if (pinkDist < pinkTolerance * 1.5) { // Even more tolerance
-                        // Very lenient pink detection
-                        // Just needs some red and some blue, with low green
-                        if (r > 60 && b > 40) { // Lower thresholds
-                            // Green should be less than both red and blue
-                            if (g < r && g < b) {
+                    // More controlled pink detection
+                    if (pinkDist < pinkTolerance) { // Use tolerance directly
+                        // Pink needs meaningful red AND blue
+                        if (r > 100 && b > 80) { // Higher thresholds
+                            // Green should be significantly less
+                            if (g < r * 0.7 && g < b * 0.7) {
                                 isPink = true;
                             }
                         }
-                        // Alternative: if it's close to calibrated color, accept it
-                        else if (pinkDist < pinkTolerance * 0.7) {
-                            isPink = true;
-                        }
-                    }
-                    
-                    // Secondary check: ratio-based for pink/magenta
-                    if (!isPink && r > 80 && b > 60) {
-                        // Check if it looks pinkish by ratios
-                        const pinkRatio = (r + b) / (g + 1); // Avoid divide by zero
-                        if (pinkRatio > 2.5) { // Pink has high red+blue, low green
-                            isPink = true;
+                        // Alternative: very close to calibrated color
+                        else if (pinkDist < pinkTolerance * 0.5) {
+                            // Only if it really matches the calibrated pink
+                            if (r > 80 && b > 60 && g < (r + b) / 2) {
+                                isPink = true;
+                            }
                         }
                     }
                 }
@@ -341,15 +334,18 @@
         
         // Boost pink detection for dim markers
         window.boostPinkDetection = function() {
-            enhancedSettings.pinkTolerance = 150;
-            enhancedSettings.pinkBrightness = 2.5;
+            enhancedSettings.pinkTolerance = 120;
+            enhancedSettings.pinkBrightness = 2.0;
             
             // Update UI
             const toleranceSlider = document.querySelector('input[oninput*="pinkTolerance"]');
             if (toleranceSlider) {
-                toleranceSlider.value = 150;
-                document.getElementById('pinkToleranceVal').textContent = '150';
+                toleranceSlider.value = 120;
+                document.getElementById('pinkToleranceVal').textContent = '120';
             }
+            
+            // Update status
+            document.getElementById('pinkStatus').textContent = '';
             
             // Visual feedback
             const btn = event.target;
@@ -361,7 +357,32 @@
                 btn.style.background = '';
             }, 2000);
             
-            console.log('Pink detection boosted! Tolerance: 150, Brightness: 2.5x');
+            console.log('Pink detection boosted! Tolerance: 120, Brightness: 2x');
+        };
+        
+        // Disable pink detection
+        window.disablePink = function() {
+            enhancedSettings.pinkTolerance = 0;
+            
+            // Update UI
+            const toleranceSlider = document.querySelector('input[oninput*="pinkTolerance"]');
+            if (toleranceSlider) {
+                toleranceSlider.value = 0;
+                document.getElementById('pinkToleranceVal').textContent = '0';
+                document.getElementById('pinkStatus').textContent = '(OFF)';
+            }
+            
+            // Visual feedback
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Pink OFF';
+            btn.style.background = '#6b7280';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '';
+            }, 2000);
+            
+            console.log('Pink detection disabled');
         };
         
         // Update UI function
@@ -404,10 +425,16 @@
                         Pink
                     </button>
                 </div>
-                <button onclick="boostPinkDetection()" 
-                        class="w-full px-2 py-1 mb-2 bg-pink-600 hover:bg-pink-700 text-white text-sm rounded transition">
-                    🚀 Boost Pink Detection
-                </button>
+                <div class="flex gap-2 mb-2">
+                    <button onclick="boostPinkDetection()" 
+                            class="flex-1 px-2 py-1 bg-pink-600 hover:bg-pink-700 text-white text-sm rounded transition">
+                        🚀 Boost Pink
+                    </button>
+                    <button onclick="disablePink()" 
+                            class="flex-1 px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded transition">
+                        ⛔ Turn Off Pink
+                    </button>
+                </div>
                 <div id="calibrationDisplay" class="text-xs text-gray-400">
                     <div style="color: #10b981;">Green: Not calibrated</div>
                     <div style="color: #3b82f6;">Blue: Not calibrated</div>
@@ -420,11 +447,11 @@
                            class="w-full mt-1">
                 </div>
                 <div class="mt-2">
-                    <label class="text-gray-300 text-sm">Pink Tolerance: <span id="pinkToleranceVal">${enhancedSettings.pinkTolerance}</span></label>
-                    <input type="range" min="50" max="200" value="${enhancedSettings.pinkTolerance}"
-                           oninput="enhancedSettings.pinkTolerance = this.value; document.getElementById('pinkToleranceVal').textContent = this.value;"
+                    <label class="text-gray-300 text-sm">Pink Sensitivity: <span id="pinkToleranceVal">${enhancedSettings.pinkTolerance}</span></label>
+                    <input type="range" min="0" max="200" value="${enhancedSettings.pinkTolerance}"
+                           oninput="enhancedSettings.pinkTolerance = this.value; document.getElementById('pinkToleranceVal').textContent = this.value; document.getElementById('pinkStatus').textContent = this.value == 0 ? '(OFF)' : '';"
                            class="w-full mt-1">
-                    <div class="text-xs text-gray-500 mt-1">Higher = more sensitive (pink needs 100+)</div>
+                    <div class="text-xs text-gray-500 mt-1">0 = OFF | 80-120 = normal | 150+ = very sensitive <span id="pinkStatus" class="text-pink-400">${enhancedSettings.pinkTolerance == 0 ? '(OFF)' : ''}</span></div>
                 </div>
             `;
             
