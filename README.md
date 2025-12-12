@@ -1,10 +1,15 @@
-# eGlass Fusion
+# eGlass Fusion v1.0.0
 
-A lightweight, web-based interface for the eGlass lightboard USB camera system. No downloads required - works directly in your browser.
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/philsmcc/open-eGlass/releases/tag/v1.0.0)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/demo-fusion.eglass.io-orange.svg)](https://fusion.eglass.io)
+
+A lightweight, web-based interface for the eGlass lightboard USB camera system with real-time fluorescent ink detection. No downloads required - works directly in your browser.
 
 Part of the open-eGlass project - Fun projects that will help you make the most of your eGlass Lightboard!
 
-🌐 **Live Demo**: [https://fusion.eglass.io](https://fusion.eglass.io)
+🌐 **Live Demo**: [https://fusion.eglass.io](https://fusion.eglass.io)  
+📦 **Latest Release**: [v1.0.0](https://github.com/philsmcc/open-eGlass/releases/tag/v1.0.0)
 
 ## Features
 
