@@ -2,7 +2,7 @@
 
 /* Dock should be highest */
 #dockContainer {
-    z-index: 1001 !important;
+    z-index: 10010 !important;
 }
 
 /* Settings panel */
