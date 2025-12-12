@@ -1,0 +1,81 @@
+/* UI Z-Index Fixes - Ensure UI elements are always on top */
+
+/* Dock should be highest */
+#dockContainer {
+    z-index: 10010 !important;
+}
+
+/* Settings panel */
+#settingsPanel {
+    z-index: 10011 !important;
+}
+
+/* Enhanced settings */
+#enhancedSettings {
+    z-index: 10012 !important;
+}
+
+/* Enhanced indicator */
+#enhancedIndicator {
+    z-index: 10013 !important;
+}
+
+/* Calibration UI */
+#calibrationBanner,
+#calibrationInstruction {
+    z-index: 10015 !important;
+}
+
+/* Triple color controls */
+#tripleColorControls {
+    z-index: 10012 !important;
+}
+
+/* Image and webview overlays should be below UI */
+.image-overlay,
+.webview-overlay {
+    z-index: 30 !important;
+}
+
+/* Enhanced canvas overlay - below UI but above content */
+#enhancedOverlay {
+    z-index: 9999 !important;
+}
+
+#enhancedCanvas {
+    z-index: 9999 !important;
+}
+
+/* Dock items and tooltips */
+.dock-item {
+    z-index: 10010 !important;
+}
+
+.dock-tooltip {
+    z-index: 10016 !important;
+}
+
+/* Any popup dialogs */
+.url-dialog,
+.dialog-overlay {
+    z-index: 10020 !important;
+}
+
+/* Settings panel content */
+.settings-panel {
+    z-index: 10011 !important;
+}
+
+/* Make sure buttons in settings are clickable */
+#enhancedSettings button,
+#tripleColorControls button {
+    position: relative;
+    z-index: 10014 !important;
+}
+
+/* Ensure sliders are interactive */
+#enhancedSettings input[type="range"],
+#tripleColorControls input[type="range"] {
+    position: relative;
+    z-index: 10014 !important;
+}
