@@ -20,8 +20,9 @@
         enhancedSettings.blueCalibration = { r: 50, g: 50, b: 180, active: true };
         enhancedSettings.pinkCalibration = { r: 180, g: 50, b: 120, active: true }; // New pink
         enhancedSettings.tolerance = 70;
-        enhancedSettings.pinkTolerance = 90; // Higher tolerance for pink since it's dimmer
+        enhancedSettings.pinkTolerance = 120; // Much higher tolerance for pink since it's dimmer
         enhancedSettings.brightness = enhancedSettings.brightness || 1.5;
+        enhancedSettings.pinkBrightness = 2.0; // Extra boost for pink
         enhancedSettings.glow = enhancedSettings.glow || 10;
         
         // Fix z-index for UI elements to be supreme
@@ -135,7 +136,7 @@
                     }
                 }
                 
-                // Check pink if active (more lenient since pink is dimmer)
+                // Check pink if active (MUCH more lenient since pink is dimmer)
                 if (pinkCal.active) {
                     const pinkDist = Math.sqrt(
                         Math.pow(r - pinkCal.r, 2) +
@@ -143,30 +144,39 @@
                         Math.pow(b - pinkCal.b, 2)
                     );
                     
-                    // Pink is red + blue, so check for that combination
-                    // More lenient checks for pink
-                    if (pinkDist < pinkTolerance) {
-                        // Pink should have significant red
-                        if (r > 100 && r > g * 1.2) {
-                            // And some blue component
-                            if (b > g) {
+                    // Much more sensitive pink detection
+                    if (pinkDist < pinkTolerance * 1.5) { // Even more tolerance
+                        // Very lenient pink detection
+                        // Just needs some red and some blue, with low green
+                        if (r > 60 && b > 40) { // Lower thresholds
+                            // Green should be less than both red and blue
+                            if (g < r && g < b) {
                                 isPink = true;
-                                // Make sure it's not pure red or pure blue
-                                if (r > b * 2 || b > r * 2) {
-                                    isPink = false;
-                                }
                             }
+                        }
+                        // Alternative: if it's close to calibrated color, accept it
+                        else if (pinkDist < pinkTolerance * 0.7) {
+                            isPink = true;
+                        }
+                    }
+                    
+                    // Secondary check: ratio-based for pink/magenta
+                    if (!isPink && r > 80 && b > 60) {
+                        // Check if it looks pinkish by ratios
+                        const pinkRatio = (r + b) / (g + 1); // Avoid divide by zero
+                        if (pinkRatio > 2.5) { // Pink has high red+blue, low green
+                            isPink = true;
                         }
                     }
                 }
                 
                 // Render colors (pink takes precedence if detected since it's hardest)
                 if (isPink) {
-                    // Pink/Magenta color
-                    inkData[i] = Math.min(255, r * enhancedSettings.brightness);
-                    inkData[i + 1] = Math.min(255, g * 0.3);
-                    inkData[i + 2] = Math.min(255, b * enhancedSettings.brightness);
-                    inkData[i + 3] = 200;
+                    // Bright pink color #dc58d4 (220, 88, 212)
+                    inkData[i] = Math.min(255, 220 * enhancedSettings.brightness);
+                    inkData[i + 1] = Math.min(255, 88 * enhancedSettings.brightness);
+                    inkData[i + 2] = Math.min(255, 212 * enhancedSettings.brightness);
+                    inkData[i + 3] = 230; // Slightly more opaque
                 } else if (isGreen) {
                     // Pure green
                     inkData[i] = 0;
@@ -192,8 +202,16 @@
             
             if (enhancedSettings.glow > 0) {
                 ctx.shadowBlur = enhancedSettings.glow;
-                // Cycle through colors for multi-color glow
-                ctx.shadowColor = '#00ffaa';
+                // Multi-color glow effect
+                // Check what colors are present to set appropriate glow
+                let hasPink = false;
+                for (let i = 3; i < inkData.length; i += 4) {
+                    if (inkData[i] > 0 && inkData[i-3] > 200) { // Check for pink pixels
+                        hasPink = true;
+                        break;
+                    }
+                }
+                ctx.shadowColor = hasPink ? '#dc58d4' : '#00ffaa';
             }
             
             const scaleX = canvas.width / hiddenCanvas.width;
@@ -321,6 +339,31 @@
             document.addEventListener('keydown', handleEsc, { once: true });
         };
         
+        // Boost pink detection for dim markers
+        window.boostPinkDetection = function() {
+            enhancedSettings.pinkTolerance = 150;
+            enhancedSettings.pinkBrightness = 2.5;
+            
+            // Update UI
+            const toleranceSlider = document.querySelector('input[oninput*="pinkTolerance"]');
+            if (toleranceSlider) {
+                toleranceSlider.value = 150;
+                document.getElementById('pinkToleranceVal').textContent = '150';
+            }
+            
+            // Visual feedback
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✨ Boosted!';
+            btn.style.background = '#ec4899';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '';
+            }, 2000);
+            
+            console.log('Pink detection boosted! Tolerance: 150, Brightness: 2.5x');
+        };
+        
         // Update UI function
         function updateCalibrationDisplay() {
             const display = document.getElementById('calibrationDisplay');
@@ -361,6 +404,10 @@
                         Pink
                     </button>
                 </div>
+                <button onclick="boostPinkDetection()" 
+                        class="w-full px-2 py-1 mb-2 bg-pink-600 hover:bg-pink-700 text-white text-sm rounded transition">
+                    🚀 Boost Pink Detection
+                </button>
                 <div id="calibrationDisplay" class="text-xs text-gray-400">
                     <div style="color: #10b981;">Green: Not calibrated</div>
                     <div style="color: #3b82f6;">Blue: Not calibrated</div>
@@ -374,9 +421,10 @@
                 </div>
                 <div class="mt-2">
                     <label class="text-gray-300 text-sm">Pink Tolerance: <span id="pinkToleranceVal">${enhancedSettings.pinkTolerance}</span></label>
-                    <input type="range" min="50" max="150" value="${enhancedSettings.pinkTolerance}"
+                    <input type="range" min="50" max="200" value="${enhancedSettings.pinkTolerance}"
                            oninput="enhancedSettings.pinkTolerance = this.value; document.getElementById('pinkToleranceVal').textContent = this.value;"
                            class="w-full mt-1">
+                    <div class="text-xs text-gray-500 mt-1">Higher = more sensitive (pink needs 100+)</div>
                 </div>
             `;
             
